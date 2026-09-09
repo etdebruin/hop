@@ -19,7 +19,7 @@
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.2.0"
+HOP_VERSION="0.2.1"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -182,18 +182,27 @@ _hop_getch() {
   HOP_KEY="$c"
 }
 
-_hop_erase() { printf '\033[%dA\r\033[J' "$(($1 + 1))" >/dev/tty; }
+# Step back to the top of a block of $1 drawn rows and wipe it.
+#
+# The cursor sits *on* the prompt line, which is the line after the rows -- the
+# prompt is printed without a trailing newline. So going back to the first row
+# means moving up by the row count. Moving up row-count + 1 lands one line
+# above the block, and every redraw then climbs another line up the screen,
+# leaving a trail of stale prompts behind it.
+_hop_erase() {
+  [ "${1:-0}" -gt 0 ] && printf '\033[%dA' "$1" >/dev/tty
+  printf '\r\033[J' >/dev/tty
+}
 
 # ── the disambiguation picker ────────────────────────────────────────────────
 
 _hop_draw() {
   local matches="$1" count="$2" sel="$3" buf="$4" drawn="$5" i=1 line disp mark
   mark="$(_hop_mark)"
+  [ "$drawn" -eq 1 ] && _hop_erase "$count"
   {
-    [ "$drawn" -eq 1 ] && printf '\033[%dA' "$((count + 1))"
     while IFS= read -r line; do
       disp="$(_hop_tilde "$line")"
-      printf '\r\033[2K'
       if [ "$i" -eq "$sel" ]; then
         printf '\033[1;36m%s %2d) %s\033[0m\r\n' "$mark" "$i" "$disp"
       else
@@ -203,7 +212,7 @@ _hop_draw() {
     done <<EOF
 $matches
 EOF
-    printf '\r\033[2Khop> %s' "$buf"
+    printf '\rhop> %s' "$buf"
   } >/dev/tty
 }
 
@@ -303,45 +312,53 @@ _hop_resolve_picker() {
 # ── the browser (bare `hop`) ─────────────────────────────────────────────────
 
 _hop_browse_draw() {
-  local matches="$1" mcount="$2" sel="$3" top="$4" vis="$5" q="$6" drawn="$7"
-  local i n=0 line mark
+  local matches="$1" mcount="$2" sel="$3" top="$4" vis="$5" q="$6" prev="$7"
+  local i line mark h
   mark="$(_hop_mark)"
+
+  # Height follows the result count, so two matches do not sit under a slab of
+  # blank lines. Erasing to end of display means a shrinking list leaves no
+  # tail behind.
+  h="$mcount"
+  [ "$h" -gt "$vis" ] && h="$vis"
+  [ -n "$prev" ] && _hop_erase "$prev"
+
   {
-    [ "$drawn" -eq 1 ] && printf '\033[%dA' "$((vis + 1))"
-    if [ "$mcount" -gt 0 ]; then
+    if [ "$h" -gt 0 ]; then
       i="$top"
       while IFS= read -r line; do
-        printf '\r\033[2K'
         if [ "$i" -eq "$sel" ]; then
           printf '\033[1;36m%s %s\033[0m\r\n' "$mark" "$(_hop_tilde "$line")"
         else
           printf '  %s\r\n' "$(_hop_tilde "$line")"
         fi
-        i=$((i + 1)); n=$((n + 1))
+        i=$((i + 1))
       done <<EOF
-$(printf '%s\n' "$matches" | sed -n "${top},$((top + vis - 1))p")
+$(printf '%s\n' "$matches" | sed -n "${top},$((top + h - 1))p")
 EOF
     fi
-    while [ "$n" -lt "$vis" ]; do printf '\r\033[2K\r\n'; n=$((n + 1)); done
     if [ "$mcount" -gt 0 ]; then
-      printf '\r\033[2Khop> %s  \033[2m(%d/%d)\033[0m' "$q" "$sel" "$mcount"
+      printf '\rhop> %s  \033[2m(%d/%d)\033[0m' "$q" "$sel" "$mcount"
     else
-      printf '\r\033[2Khop> %s  \033[2m(no match)\033[0m' "$q"
+      printf '\rhop> %s  \033[2m(no match)\033[0m' "$q"
     fi
   } >/dev/tty
+
+  HOP_ROWS="$h"
 }
 
 # Browse every candidate, narrowing as you type. Anything printable filters —
 # there is no number-selection here, because with thousands of rows a number is
 # meaningless and the filter is the whole point.
 _hop_browse_loop() {
-  local all="$1" q='' matches mcount sel=1 top=1 vis rows drawn=0 c
+  local all="$1" q='' matches mcount sel=1 top=1 vis rows prev='' c
+  HOP_ROWS=0
 
   rows="$(tput lines 2>/dev/null)"
   case "$rows" in ''|*[!0-9]*) rows=24 ;; esac
-  vis=$((rows - 4))
-  [ "$vis" -gt 12 ] && vis=12
-  [ "$vis" -lt 3 ] && vis=3
+  vis=$((rows - 3))
+  [ "$vis" -gt 10 ] && vis=10
+  [ "$vis" -lt 1 ] && vis=1
 
   matches="$(printf '%s\n' "$all" | _hop_rank '' keep)"
   mcount="$(_hop_count "$matches")"
@@ -349,10 +366,10 @@ _hop_browse_loop() {
   while :; do
     if [ "$sel" -lt "$top" ]; then top="$sel"; fi
     if [ "$sel" -ge "$((top + vis))" ]; then top=$((sel - vis + 1)); fi
-    _hop_browse_draw "$matches" "$mcount" "$sel" "$top" "$vis" "$q" "$drawn"
-    drawn=1
+    _hop_browse_draw "$matches" "$mcount" "$sel" "$top" "$vis" "$q" "$prev"
+    prev="$HOP_ROWS"
 
-    _hop_getch || { _hop_erase "$vis"; return 1; }
+    _hop_getch || { _hop_erase "$prev"; return 1; }
     c="$HOP_KEY"
     case "$c" in
       "$(printf '\033')")
@@ -362,16 +379,16 @@ _hop_browse_loop() {
             B) [ "$sel" -lt "$mcount" ] && sel=$((sel + 1)) ;;
           esac
         else
-          _hop_erase "$vis"; return 1
+          _hop_erase "$prev"; return 1
         fi
         continue
         ;;
       "$(printf '\020')") [ "$sel" -gt 1 ] && sel=$((sel - 1)); continue ;;
       "$(printf '\016')") [ "$sel" -lt "$mcount" ] && sel=$((sel + 1)); continue ;;
-      "$(printf '\003')"|"$(printf '\004')") _hop_erase "$vis"; return 1 ;;
+      "$(printf '\003')"|"$(printf '\004')") _hop_erase "$prev"; return 1 ;;
       ''|"$(printf '\r')"|"$(printf '\n')")
         [ "$mcount" -gt 0 ] || continue
-        _hop_erase "$vis"
+        _hop_erase "$prev"
         printf '%s\n' "$matches" | sed -n "${sel}p"
         return 0
         ;;

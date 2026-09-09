@@ -195,7 +195,7 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-120 assertions. Every behavioural assertion runs under **both bash and zsh**,
+127 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 depth limits, pruning, multiple roots, symlinked roots, `~` expansion, names
 with spaces, exit codes, and the installer's idempotence.
@@ -203,8 +203,17 @@ with spaces, exit codes, and the installer's idempotence.
 The pickers only engage on a real terminal, so they are tested through one:
 `test/pty-pick.zsh` spawns `hop` under a pty, sends actual keystrokes, and
 checks where the shell ended up — covering both the disambiguation picker and
-the browser, including filtering, backspace and every way out. Those eighteen
-assertions skip automatically if `zsh/zpty` isn't available.
+the browser, including filtering, backspace and every way out.
+
+Landing on the right directory isn't proof the screen looked right, though, so
+the redraw is tested by rendering it: `test/screen.awk` is a small terminal
+emulator that replays the raw pty stream onto a virtual screen, and the tests
+assert on what would actually be visible — one prompt line, no stale rows, no
+climbing over whatever was already on screen. A redraw that steps back up one
+line too many looks entirely reasonable in the byte stream while smearing
+prompts up the terminal, and that is exactly the bug it exists to catch.
+
+All of these skip automatically if `zsh/zpty` isn't available.
 
 ## License
 

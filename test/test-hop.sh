@@ -243,6 +243,30 @@ if command -v zsh >/dev/null 2>&1 && zsh -c 'zmodload zsh/zpty' 2>/dev/null; the
   eq "browse: ctrl-u clears the filter" "$PTY/Code/CTO" "$(browse type:vega ctrl-u type:CTO enter)"
   eq "browse: ctrl-c cancels without moving" "/" "$(browse ctrl-c)"
   eq "browse: enter on an empty result does nothing" "/" "$(browse type:zzznope enter esc)"
+
+  # Redraw geometry. Asserting on $PWD alone cannot see a picker that climbs
+  # one line up the screen per keystroke, smearing stale prompts behind it and
+  # eating whatever was above -- so render the stream onto a virtual screen and
+  # look at it. The harness prints ABOVE1-3 first because a picker at row 1
+  # hides the bug: cursor-up clamps at the top of the screen.
+  screen() { PTY_RAW=1 zsh "$ROOT/test/pty-pick.zsh" "$HOP_SH" "$PTY/Code" "$@" 2>/dev/null \
+               | LC_ALL=C awk -f "$ROOT/test/screen.awk"; }
+
+  scr="$(screen '' type:v type:e type:g type:a)"
+  eq "browse redraw leaves exactly one prompt line" "1" "$(printf '%s\n' "$scr" | grep -c 'hop>')"
+  eq "browse redraw does not climb over earlier output" "3" \
+    "$(printf '%s\n' "$scr" | grep -c '^ABOVE')"
+  # One match draws one row -- not a fixed slab of blank lines under it.
+  eq "browse height follows the result count" "5" "$(printf '%s\n' "$scr" | wc -l | tr -d ' ')"
+  eq "browse renders the filtered row" "1" \
+    "$(printf '%s\n' "$scr" | grep -c '/vega$')"
+
+  scr="$(screen ctocompass down down)"
+  eq "picker redraw leaves exactly one prompt line" "1" "$(printf '%s\n' "$scr" | grep -c 'hop>')"
+  eq "picker redraw does not climb over earlier output" "3" \
+    "$(printf '%s\n' "$scr" | grep -c '^ABOVE')"
+  eq "picker draws one row per match and nothing more" "7" \
+    "$(printf '%s\n' "$scr" | wc -l | tr -d ' ')"
 else
   printf 'skipping arrow-picker tests (no zsh/zpty)\n'
 fi

@@ -22,6 +22,7 @@ drain() { local c; while zpty -r -t p c 2>/dev/null; do OUT+=$c; done }
 # it, not via a leading `env`, which would otherwise apply to only the first
 # fragment of the split.
 CMD="cd /; export HOP_ROOTS=${(q)ROOTS} TERM=xterm-256color; "
+CMD+='print -l ABOVE1 ABOVE2 ABOVE3; '
 if [[ -n $QUERY ]]; then
   CMD+="source ${(q)HOPSH}; hop ${(q)QUERY}; "
 else
@@ -54,4 +55,9 @@ sleep 0.6
 drain
 zpty -d p 2>/dev/null
 
-print -r -- ${OUT//$'\r'/$'\n'} | grep -o 'RESULT:.*' | tail -1
+if [[ -n ${PTY_RAW:-} ]]; then
+  # Raw stream, carriage returns intact, for test/screen.awk to render.
+  print -rn -- $OUT
+else
+  print -r -- ${OUT//$'\r'/$'\n'} | grep -o 'RESULT:.*' | tail -1
+fi
