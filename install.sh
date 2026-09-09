@@ -21,8 +21,18 @@ fi
 block() {
   printf '%s\n' "$BEGIN"
   printf '[ -f "%s/hop.sh" ] && . "%s/hop.sh"\n' "$DIR" "$DIR"
+  # zsh's completion system is usually initialised by /etc/zshrc, which runs
+  # *before* this file — so adding to fpath here is too late for compinit to
+  # notice. Registering _hop directly is both correct and cheaper than a
+  # second compinit.
   case "$RC" in
-    *zshrc) printf '[ -n "${ZSH_VERSION:-}" ] && fpath=("%s/completions" $fpath)\n' "$DIR" ;;
+    *zshrc)
+      printf 'if [ -n "${ZSH_VERSION:-}" ]; then\n'
+      printf '  fpath=("%s/completions" $fpath)\n' "$DIR"
+      printf '  autoload -Uz _hop 2>/dev/null\n'
+      printf '  whence compdef >/dev/null 2>&1 && compdef _hop hop\n'
+      printf 'fi\n'
+      ;;
   esac
   printf '%s\n' "$END"
 }

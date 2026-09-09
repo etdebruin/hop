@@ -189,6 +189,7 @@ HOP_RC="$RC" sh "$ROOT/install.sh" >/dev/null 2>&1
 has "installer sources hop.sh" "$ROOT/hop.sh" "$(cat "$RC")"
 has "installer keeps existing rc content" "export EXISTING=1" "$(cat "$RC")"
 has "installer adds completions to fpath for zsh" "completions" "$(cat "$RC")"
+has "installer registers the completion with compdef" "compdef _hop hop" "$(cat "$RC")"
 HOP_RC="$RC" sh "$ROOT/install.sh" >/dev/null 2>&1
 eq "installer is idempotent" "1" "$(grep -cF '# >>> hop >>>' "$RC")"
 eq "installed rc is valid zsh" "0" "$(zsh -n "$RC" >/dev/null 2>&1; printf %s "$?")"

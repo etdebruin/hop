@@ -52,7 +52,15 @@ Or wire it up yourself:
 
 ```sh
 . /path/to/hop/hop.sh
-fpath=(/path/to/hop/completions $fpath)   # zsh tab-completion
+
+# zsh tab-completion. Register it explicitly rather than relying on compinit:
+# on macOS, compinit has already run (from /etc/zshrc) by the time your own rc
+# is sourced, so a late fpath addition alone is never picked up.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  fpath=(/path/to/hop/completions $fpath)
+  autoload -Uz _hop
+  whence compdef >/dev/null 2>&1 && compdef _hop hop
+fi
 ```
 
 `hop` must be **sourced**, not executed. Changing your working directory is
@@ -150,7 +158,7 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-95 assertions. Every behavioural assertion runs under **both bash and zsh**,
+96 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 depth limits, pruning, multiple roots, symlinked roots, `~` expansion, names
 with spaces, exit codes, and the installer's idempotence.
