@@ -1,5 +1,7 @@
 # hop
 
+[![test](https://github.com/etdebruin/hop/actions/workflows/test.yml/badge.svg)](https://github.com/etdebruin/hop/actions/workflows/test.yml)
+
 Jump to any directory by name, from anywhere.
 
 ```console
