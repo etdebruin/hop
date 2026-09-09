@@ -78,8 +78,30 @@ $ hop aixcto                # exact name, anywhere under your roots
 $ hop dotf                  # prefix match
 $ hop andbox                # substring match
 $ hop AIXCTO                # case-insensitive
-$ hop                       # no argument: jump to your first root
+$ hop                       # no argument: browse everything, type to filter
 ```
+
+### Browsing
+
+Run `hop` with no argument and you get every directory under your roots,
+narrowing as you type:
+
+```console
+$ hop
+   ~/Code/aixcto
+❯  ~/Code/dotfiles
+   ~/Code/su/backend
+   ~/Code/vega/cto-compass
+hop> dot  (2/4276)
+```
+
+Anything printable filters, `↑`/`↓` move, `Enter` jumps, `^U` clears the
+filter, `Esc` or `^C` back out. Filtering is re-ranked on every keystroke and
+takes about **15ms** over 4,276 directories, so it keeps up with typing.
+
+There is no select-by-number here — with thousands of rows a number means
+nothing, and the filter is the point. `hop --list` with no name prints the same
+set non-interactively.
 
 When a name is ambiguous, you get a picker. Arrow down to the one you want and
 press Enter — or type its number, which works exactly as it always did:
@@ -173,15 +195,16 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-108 assertions. Every behavioural assertion runs under **both bash and zsh**,
+120 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 depth limits, pruning, multiple roots, symlinked roots, `~` expansion, names
 with spaces, exit codes, and the installer's idempotence.
 
-The arrow-key picker only engages on a real terminal, so it is tested through
-one: `test/pty-pick.zsh` spawns `hop` under a pty, sends actual keystrokes, and
-checks where the shell ended up. Those ten assertions skip automatically if
-`zsh/zpty` isn't available.
+The pickers only engage on a real terminal, so they are tested through one:
+`test/pty-pick.zsh` spawns `hop` under a pty, sends actual keystrokes, and
+checks where the shell ended up — covering both the disambiguation picker and
+the browser, including filtering, backspace and every way out. Those eighteen
+assertions skip automatically if `zsh/zpty` isn't available.
 
 ## License
 

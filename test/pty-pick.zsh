@@ -3,7 +3,8 @@
 #
 #   pty-pick.zsh <hop.sh> <roots> <query> <key>...
 #
-# Keys: up down enter esc ctrl-c q j k <digit>
+# An empty <query> runs bare `hop`, i.e. the browser.
+# Keys: up down enter esc ctrl-c ctrl-u bs q j k <digit>, or type:<text>
 #
 # Two things this has to get right: output is drained continuously (when the
 # pty child exits, zsh reaps the session and anything still buffered is lost),
@@ -21,7 +22,11 @@ drain() { local c; while zpty -r -t p c 2>/dev/null; do OUT+=$c; done }
 # it, not via a leading `env`, which would otherwise apply to only the first
 # fragment of the split.
 CMD="cd /; export HOP_ROOTS=${(q)ROOTS} TERM=xterm-256color; "
-CMD+="source ${(q)HOPSH}; hop ${(q)QUERY}; "
+if [[ -n $QUERY ]]; then
+  CMD+="source ${(q)HOPSH}; hop ${(q)QUERY}; "
+else
+  CMD+="source ${(q)HOPSH}; hop; "
+fi
 CMD+='printf "RESULT:%s\n" "$PWD"; sleep 3'
 zpty -b p zsh -f -c ${(q)CMD} || exit 3
 
@@ -35,6 +40,9 @@ for k in "$@"; do
     enter)  seq=$'\r' ;;
     esc)    seq=$'\e' ;;
     ctrl-c) seq=$'\003' ;;
+    ctrl-u) seq=$'\025' ;;
+    bs)     seq=$'\177' ;;
+    type:*) seq=${k#type:} ;;
     *)      seq=$k ;;
   esac
   zpty -w -n p "$seq"

@@ -131,6 +131,12 @@ for SH in $SHELLS; do
   eq "--list prints every match, shallowest first" \
     "$TMP/Code/CTO/ctocompass
 $TMP/Code/ctoapps/ctocompass" "$out"
+  # Byte order, so uppercase names sort first -- deliberate, for determinism.
+  eq "--list with no name enumerates everything, shallowest first" \
+    "$TMP/Code/CTO" "$(run 'hop --list | head -1')"
+  eq "--list with no name includes deeper entries too" \
+    "1" "$(run 'hop --list | grep -c CTO/ctocompass')"
+
   eq "--list does not cd" \
     "$TMP/Code/CTO/ctocompass|$TMP/elsewhere" "$(run 'hop --list ctocompass | head -1 | tr -d "\n"; printf "|%s" "$PWD"')"
 
@@ -223,6 +229,20 @@ if command -v zsh >/dev/null 2>&1 && zsh -c 'zmodload zsh/zpty' 2>/dev/null; the
   eq "arrow: ctrl-c cancels without moving" "/" "$(pick ctrl-c)"
   eq "arrow: escape cancels without moving" "/" "$(pick esc)"
   eq "arrow: q cancels without moving" "/" "$(pick q)"
+
+  # Bare `hop` browses everything, narrowing as you type.
+  browse() { zsh "$ROOT/test/pty-pick.zsh" "$HOP_SH" "$PTY/Code" "" "$@" 2>/dev/null | sed 's|^RESULT:||'; }
+
+  eq "browse: enter takes the first row" "$PTY/Code/CTO" "$(browse enter)"
+  eq "browse: down moves the highlight" "$PTY/Code/ctoapps" "$(browse down enter)"
+  eq "browse: typing filters the list" "$PTY/Code/vega" "$(browse type:vega enter)"
+  eq "browse: an exact name sorts above a path containing it" \
+    "$PTY/Code/ctoapps" "$(browse type:ctoapps enter)"
+  eq "browse: backspace widens the filter again" \
+    "$PTY/Code/vega" "$(browse type:vegaXX bs bs enter)"
+  eq "browse: ctrl-u clears the filter" "$PTY/Code/CTO" "$(browse type:vega ctrl-u type:CTO enter)"
+  eq "browse: ctrl-c cancels without moving" "/" "$(browse ctrl-c)"
+  eq "browse: enter on an empty result does nothing" "/" "$(browse type:zzznope enter esc)"
 else
   printf 'skipping arrow-picker tests (no zsh/zpty)\n'
 fi
