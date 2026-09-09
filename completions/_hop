@@ -1,0 +1,20 @@
+#compdef hop
+# zsh completion for hop. Put this directory on your fpath.
+
+local -a names
+local state
+
+_arguments -C -s \
+  '(-l --list)'{-l,--list}'[list matching directories instead of jumping]' \
+  '(-d --depth)'{-d,--depth}'[how deep to descend]:depth:' \
+  '--roots[print the directories hop searches]' \
+  '(-h --help)'{-h,--help}'[show help]' \
+  '(-V --version)'{-V,--version}'[show the version]' \
+  '1:directory:->names' && return 0
+
+case "$state" in
+  names)
+    names=(${(f)"$(_hop_candidates 2>/dev/null)"})
+    _describe -t directories 'directory' names
+    ;;
+esac
