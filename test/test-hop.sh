@@ -204,5 +204,28 @@ HOP_RC="$RC2" sh "$ROOT/install.sh" >/dev/null 2>&1
 hasnt "bash rc gets no fpath line" "fpath" "$(cat "$RC2")"
 eq "installed bash rc is valid bash" "0" "$(bash -n "$RC2" >/dev/null 2>&1; printf %s "$?")"
 
+
+# -- arrow-key picker (real pty, zsh only) ------------------------------------
+# The picker only engages on a terminal, so a pty is the only way to test it.
+if command -v zsh >/dev/null 2>&1 && zsh -c 'zmodload zsh/zpty' 2>/dev/null; then
+  SH=pty
+  PTY="$TMP/pty"
+  mkdir -p "$PTY/Code/CTO/ctocompass" "$PTY/Code/ctoapps/ctocompass" "$PTY/Code/vega/ctocompass"
+  pick() { zsh "$ROOT/test/pty-pick.zsh" "$HOP_SH" "$PTY/Code" ctocompass "$@" 2>/dev/null | sed 's|^RESULT:||'; }
+
+  eq "arrow: enter takes the highlighted row" "$PTY/Code/CTO/ctocompass" "$(pick enter)"
+  eq "arrow: down moves the highlight" "$PTY/Code/ctoapps/ctocompass" "$(pick down enter)"
+  eq "arrow: down twice reaches the third row" "$PTY/Code/vega/ctocompass" "$(pick down down enter)"
+  eq "arrow: up from the top wraps to the bottom" "$PTY/Code/vega/ctocompass" "$(pick up enter)"
+  eq "arrow: down past the bottom wraps to the top" "$PTY/Code/CTO/ctocompass" "$(pick down down down enter)"
+  eq "arrow: j and k move too" "$PTY/Code/ctoapps/ctocompass" "$(pick j enter)"
+  eq "arrow: typing a number still selects" "$PTY/Code/ctoapps/ctocompass" "$(pick 2 enter)"
+  eq "arrow: ctrl-c cancels without moving" "/" "$(pick ctrl-c)"
+  eq "arrow: escape cancels without moving" "/" "$(pick esc)"
+  eq "arrow: q cancels without moving" "/" "$(pick q)"
+else
+  printf 'skipping arrow-picker tests (no zsh/zpty)\n'
+fi
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

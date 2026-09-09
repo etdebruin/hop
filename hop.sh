@@ -12,7 +12,7 @@
 #                  exists, else $HOME; a leading ~/ is expanded)
 #   HOP_DEPTH      how deep to descend              (default: 4)
 #   HOP_EXCLUDES   colon-separated dir names to never descend into
-#   HOP_PICKER     auto | numbered | fzf            (default: auto)
+#   HOP_PICKER     auto | arrow | numbered | fzf   (default: auto)
 #   HOP_QUIET      set to 1 to not print the destination
 #   HOP_CACHE_TTL  seconds to reuse the completion index (default: 30)
 #
@@ -112,18 +112,128 @@ _hop_tilde() {
   esac
 }
 
-# _hop_pick <newline-separated-paths> — print the chosen one. Menu goes to
-# stderr so the caller can capture the choice on stdout.
+# Read one keypress into HOP_KEY. $1 is an optional timeout in seconds, used
+# to tell a bare Escape from the start of an arrow-key sequence.
+_hop_getch() {
+  local t="${1-}" c
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ -n "$t" ]; then read -t "$t" -k 1 -u 0 -r c </dev/tty || return 1
+    else read -k 1 -u 0 -r c </dev/tty || return 1; fi
+  else
+    if [ -n "$t" ]; then IFS= read -r -t "$t" -n 1 c </dev/tty || return 1
+    else IFS= read -r -n 1 c </dev/tty || return 1; fi
+  fi
+  HOP_KEY="$c"
+}
+
+_hop_draw() {
+  local matches="$1" count="$2" sel="$3" buf="$4" drawn="$5" i=1 line disp mark
+  # A pointer glyph is nicer, but only where the locale can actually render it.
+  case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+    *[Uu][Tt][Ff]*) mark='❯' ;;
+    *) mark='>' ;;
+  esac
+  {
+    [ "$drawn" -eq 1 ] && printf '\033[%dA' "$((count + 1))"
+    while IFS= read -r line; do
+      disp="$(_hop_tilde "$line")"
+      printf '\r\033[2K'
+      if [ "$i" -eq "$sel" ]; then
+        printf '\033[1;36m%s %2d) %s\033[0m\r\n' "$mark" "$i" "$disp"
+      else
+        printf '  %2d) %s\r\n' "$i" "$disp"
+      fi
+      i=$((i + 1))
+    done <<EOF
+$matches
+EOF
+    printf '\r\033[2Khop> %s' "$buf"
+  } >/dev/tty
+}
+
+# Wipe the menu so the terminal is left as we found it.
+_hop_erase() { printf '\033[%dA\r\033[J' "$(($1 + 1))" >/dev/tty; }
+
+# Arrow-key picker. Up/Down (or k/j, or ^P/^N) move; Enter takes the
+# highlighted row; typing digits still selects by number, exactly as the plain
+# numbered picker does, so existing muscle memory keeps working.
+_hop_pick_arrow() {
+  local matches="$1" count sel=1 buf='' drawn=0 c
+  count="$(printf '%s\n' "$matches" | wc -l | tr -d ' ')"
+
+  while :; do
+    _hop_draw "$matches" "$count" "$sel" "$buf" "$drawn"
+    drawn=1
+    _hop_getch || { _hop_erase "$count"; return 1; }
+    c="$HOP_KEY"
+    case "$c" in
+      "$(printf '\033')")
+        # Escape alone cancels; Escape [ A/B is an arrow key.
+        if _hop_getch 0.1 && [ "$HOP_KEY" = '[' ] && _hop_getch 0.1; then
+          case "$HOP_KEY" in
+            A) buf=''; sel=$((sel > 1 ? sel - 1 : count)) ;;
+            B) buf=''; sel=$((sel < count ? sel + 1 : 1)) ;;
+          esac
+        else
+          _hop_erase "$count"; return 1
+        fi
+        ;;
+      k|"$(printf '\020')") buf=''; sel=$((sel > 1 ? sel - 1 : count)) ;;
+      j|"$(printf '\016')") buf=''; sel=$((sel < count ? sel + 1 : 1)) ;;
+      [0-9]) buf="$buf$c" ;;
+      "$(printf '\177')"|"$(printf '\010')") buf="${buf%?}" ;;
+      q|"$(printf '\003')"|"$(printf '\004')") _hop_erase "$count"; return 1 ;;
+      ''|"$(printf '\r')"|"$(printf '\n')")
+        if [ -n "$buf" ]; then
+          if [ "$buf" -ge 1 ] 2>/dev/null && [ "$buf" -le "$count" ]; then
+            sel="$buf"
+          else
+            buf=''
+            continue
+          fi
+        fi
+        _hop_erase "$count"
+        printf '%s\n' "$matches" | sed -n "${sel}p"
+        return 0
+        ;;
+    esac
+  done
+}
+
+# _hop_pick <newline-separated-paths> — print the chosen one. The menu goes to
+# the terminal, never to stdout, so the caller can capture the choice.
 _hop_pick() {
-  local matches="$1" picker reply count
+  local matches="$1" picker reply count saved rc interactive=0
   picker="${HOP_PICKER:-auto}"
+
+  if [ -t 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then interactive=1; fi
+  case "${TERM:-}" in ''|dumb) interactive=0 ;; esac
+
   if [ "$picker" = auto ]; then
-    if [ -t 0 ] && command -v fzf >/dev/null 2>&1; then picker=fzf; else picker=numbered; fi
+    if [ "$interactive" -eq 1 ] && command -v fzf >/dev/null 2>&1; then
+      picker=fzf
+    elif [ "$interactive" -eq 1 ]; then
+      picker=arrow
+    else
+      picker=numbered
+    fi
   fi
 
   if [ "$picker" = fzf ]; then
     printf '%s\n' "$matches" | fzf --select-1 --exit-0 --prompt='hop> '
     return $?
+  fi
+
+  # The arrow picker needs raw mode; if the terminal won't give it to us, fall
+  # through to the numbered prompt rather than failing.
+  if [ "$picker" = arrow ] && [ "$interactive" -eq 1 ]; then
+    saved="$(stty -g </dev/tty 2>/dev/null)"
+    if [ -n "$saved" ] && stty raw -echo </dev/tty 2>/dev/null; then
+      _hop_pick_arrow "$matches"
+      rc=$?
+      stty "$saved" </dev/tty 2>/dev/null
+      return $rc
+    fi
   fi
 
   printf '%s\n' "$matches" | awk '{ printf "%2d) %s\n", NR, $0 }' >&2

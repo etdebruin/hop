@@ -81,15 +81,25 @@ $ hop AIXCTO                # case-insensitive
 $ hop                       # no argument: jump to your first root
 ```
 
-When a name is ambiguous, you get a picker:
+When a name is ambiguous, you get a picker. Arrow down to the one you want and
+press Enter — or type its number, which works exactly as it always did:
 
 ```console
 $ hop ctocompass
- 1) ~/Code/CTO/ctocompass
- 2) ~/Code/ctoapps/ctocompass
-hop> 2
-~/Code/ctoapps/ctocompass
+❯  1) ~/Code/CTO/ctocompass
+   2) ~/Code/ctoapps/ctocompass
+   3) ~/Code/vega/cto-compass/cmd/ctocompass
+hop>
 ```
+
+| key | |
+|---|---|
+| `↑` `↓` — or `k` `j`, or `^P` `^N` | move the highlight (wraps at both ends) |
+| `Enter` | take the highlighted row |
+| digits, then `Enter` | select by number |
+| `Esc`, `q`, `^C` | cancel |
+
+The menu erases itself on the way out, so your scrollback stays clean.
 
 Or settle it in one shot with a path fragment:
 
@@ -99,7 +109,10 @@ $ hop CTO/ctocompass
 ```
 
 If [`fzf`](https://github.com/junegunn/fzf) is installed, the picker uses it
-automatically.
+automatically; `HOP_PICKER=arrow` forces the built-in one instead. Where there
+is no terminal to drive — a pipe, a script, a `TERM=dumb` session — it degrades
+to a plain numbered prompt that reads a number from stdin, so `hop` stays
+scriptable.
 
 ### Options
 
@@ -136,7 +149,7 @@ All optional, all environment variables:
 | `HOP_ROOTS` | `~/Code` if it exists, else `$HOME` | colon-separated dirs to search; a leading `~/` is expanded |
 | `HOP_DEPTH` | `4` | how deep to descend |
 | `HOP_EXCLUDES` | see below | colon-separated directory *names* to never descend into |
-| `HOP_PICKER` | `auto` | `auto`, `numbered`, or `fzf` |
+| `HOP_PICKER` | `auto` | `auto`, `arrow`, `numbered`, or `fzf` |
 | `HOP_QUIET` | unset | set to `1` to not print the destination |
 | `HOP_CACHE_TTL` | `30` | seconds to reuse the tab-completion index |
 
@@ -160,10 +173,15 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-96 assertions. Every behavioural assertion runs under **both bash and zsh**,
+108 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 depth limits, pruning, multiple roots, symlinked roots, `~` expansion, names
 with spaces, exit codes, and the installer's idempotence.
+
+The arrow-key picker only engages on a real terminal, so it is tested through
+one: `test/pty-pick.zsh` spawns `hop` under a pty, sends actual keystrokes, and
+checks where the shell ended up. Those ten assertions skip automatically if
+`zsh/zpty` isn't available.
 
 ## License
 
