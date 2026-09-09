@@ -220,7 +220,13 @@ _hop_candidates() {
   file="${XDG_CACHE_HOME:-$HOME/.cache}/hop/index"
   ttl="${HOP_CACHE_TTL:-30}"
   if [ -f "$file" ]; then
-    mtime="$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)"
+    # GNU and BSD stat spell mtime differently, and each *succeeds* on the
+    # other's flags while printing something that is not a number: GNU reads
+    # -f as "filesystem status" and dumps a block of text. So try both and
+    # insist on digits rather than trusting an exit status.
+    mtime="$(stat -c %Y "$file" 2>/dev/null)"
+    case "$mtime" in ''|*[!0-9]*) mtime="$(stat -f %m "$file" 2>/dev/null)" ;; esac
+    case "$mtime" in ''|*[!0-9]*) mtime='' ;; esac
     now="$(date +%s)"
     if [ -n "$mtime" ] && [ "$((now - mtime))" -lt "$ttl" ]; then
       cat "$file"

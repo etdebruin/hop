@@ -166,6 +166,11 @@ $TMP/Code/ctoapps/ctocompass" "$out"
   out="$(run 'export XDG_CACHE_HOME="@TMP@/cache"; _hop_candidates')"
   has "candidate index lists basenames" "aixcto" "$out"
   hasnt "candidate index excludes pruned dirs" "evil" "$out"
+  # GNU and BSD stat disagree on flags and each prints garbage rather than
+  # failing on the other's; the index must survive an unreadable timestamp.
+  eq "candidate index survives a stat that returns nonsense" "aixcto" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cache3"; mkdir -p "@TMP@/stub"; printf "#!/bin/sh\nprintf \"nonsense %%s\\n\" \"\$*\"\n" > "@TMP@/stub/stat"; chmod +x "@TMP@/stub/stat"; PATH="@TMP@/stub:$PATH"; _hop_candidates >/dev/null 2>&1; _hop_candidates 2>&1 | grep -c aixcto >/dev/null && _hop_candidates 2>/dev/null | grep -x aixcto')"
+
   eq "candidate index is cached to disk" "ok" \
     "$(run 'export XDG_CACHE_HOME="@TMP@/cache2"; _hop_candidates >/dev/null; [ -s "$XDG_CACHE_HOME/hop/index" ] && printf ok')"
 done
