@@ -19,7 +19,7 @@
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.2.1"
+HOP_VERSION="0.2.2"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -124,6 +124,33 @@ _hop_rank() {
 
 _hop_search() { _hop_all | _hop_rank "$1"; }
 
+# Read matches on stdin, print them back minus the redundant ones.
+#
+# A directory named `conversation` inside another directory named
+# `conversation` is not a second destination -- it is the same name seen from
+# further in, and offering both turns a settled answer back into a question.
+# So when one match sits under another *under the same name*, the outer one
+# wins and the inner one is dropped.
+#
+# Only under the same name: `zetaside` inside `zeta` is a different place that
+# happens to live there, and still worth offering. And only when jumping --
+# `--list` and the browser are asked to show everything, so they show it.
+_hop_prune_nested() {
+  awk '
+    { path[NR] = $0; n = split($0, p, "/"); base[NR] = tolower(p[n]) }
+    END {
+      for (i = 1; i <= NR; i++) {
+        nested = 0
+        for (j = 1; j <= NR; j++) {
+          if (j == i || base[i] != base[j]) continue
+          if (index(path[i], path[j] "/") == 1) { nested = 1; break }
+        }
+        if (!nested) print path[i]
+      }
+    }
+  '
+}
+
 # ── display helpers ──────────────────────────────────────────────────────────
 
 # Abbreviate $HOME to ~ for display.
@@ -212,7 +239,10 @@ _hop_draw() {
     done <<EOF
 $matches
 EOF
-    printf '\rhop> %s' "$buf"
+    # The prompt looks exactly like the browser's, where anything you type
+    # filters -- so it has to say that here it is digits or the arrows, and
+    # that a letter will be ignored.
+    printf '\rhop> %s  \033[2m(1-%d, arrows)\033[0m' "$buf" "$count"
   } >/dev/tty
 }
 
@@ -278,13 +308,13 @@ _hop_pick() {
     [ "$rc" -ne 2 ] && return $rc
   fi
 
+  count="$(_hop_count "$matches")"
   printf '%s\n' "$matches" | awk '{ printf "%2d) %s\n", NR, $0 }' >&2
-  printf 'hop> ' >&2
+  printf 'hop> (1-%d) ' "$count" >&2
   IFS= read -r reply || { printf '\n' >&2; return 1; }
   case "$reply" in
     ''|*[!0-9]*) printf 'hop: cancelled\n' >&2; return 1 ;;
   esac
-  count="$(_hop_count "$matches")"
   if [ "$reply" -lt 1 ] || [ "$reply" -gt "$count" ]; then
     printf 'hop: no such choice: %s\n' "$reply" >&2
     return 1
@@ -498,6 +528,7 @@ hop() {
     return 0
   fi
 
+  matches="$(printf '%s\n' "$matches" | _hop_prune_nested)"
   count="$(_hop_count "$matches")"
   if [ "$count" -eq 1 ]; then
     target="$matches"

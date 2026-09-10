@@ -28,6 +28,8 @@ mkdir -p \
   "$TMP/Code/CTO/ctocompass" \
   "$TMP/Code/ctoapps/ctocompass" \
   "$TMP/Code/su/backend" \
+  "$TMP/Code/conversation/app/routes/conversation" \
+  "$TMP/Code/zeta/zetaside" \
   "$TMP/Code/deep/a/b/c/needle" \
   "$TMP/Code/proj/node_modules/evil" \
   "$TMP/Code/proj/.git/hooks" \
@@ -151,6 +153,25 @@ $TMP/Code/ctoapps/ctocompass" "$out"
     "$TMP/elsewhere" "$(run 'hop ctocompass >/dev/null 2>&1; printf %s "$PWD"')"
   has "picker menu is numbered" ") $TMP/Code/CTO/ctocompass" \
     "$(run 'HOP_PICKER=numbered; hop ctocompass >/dev/null' '1')"
+  has "numbered picker names the range it wants" "1-2" \
+    "$(run 'HOP_PICKER=numbered; hop ctocompass >/dev/null' '1')"
+
+  # -- nesting ---------------------------------------------------------------
+  # A match that lives inside another match under the same name is that match,
+  # seen from further in; asking which one you meant is a question with one
+  # answer. No stdin here, so a picker would cancel and leave $PWD alone.
+  eq "a same-name match nested inside another does not force a choice" \
+    "$TMP/Code/conversation" "$(run 'hop conversation >/dev/null 2>&1; printf %s "$PWD"')"
+  eq "collapsing the nest still prints the destination" \
+    "0" "$(run 'hop conversation >/dev/null 2>&1; printf %s "$?"')"
+  eq "--list still shows every nested match" "2" \
+    "$(run 'hop --list conversation | grep -c conversation')"
+  eq "browsing still sees every nested match" "1" \
+    "$(run 'hop --list | grep -c "conversation/app/routes/conversation"')"
+  # Only the same name collapses: a differently-named directory that happens to
+  # sit inside another match is a different place, and still worth offering.
+  eq "a differently-named nested match is still offered" \
+    "$TMP/Code/zeta/zetaside" "$(run 'hop zet >/dev/null 2>&1; printf %s "$PWD"' '2')"
 
   # -- output ----------------------------------------------------------------
   has "prints the destination, ~-abbreviated" "~/Code/aixcto" \
@@ -267,6 +288,7 @@ if command -v zsh >/dev/null 2>&1 && zsh -c 'zmodload zsh/zpty' 2>/dev/null; the
     "$(printf '%s\n' "$scr" | grep -c '^ABOVE')"
   eq "picker draws one row per match and nothing more" "7" \
     "$(printf '%s\n' "$scr" | wc -l | tr -d ' ')"
+  has "picker prompt names the range it wants" "(1-3, arrows)" "$scr"
 else
   printf 'skipping arrow-picker tests (no zsh/zpty)\n'
 fi

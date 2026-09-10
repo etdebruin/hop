@@ -111,7 +111,7 @@ $ hop ctocompass
 ❯  1) ~/Code/CTO/ctocompass
    2) ~/Code/ctoapps/ctocompass
    3) ~/Code/vega/cto-compass/cmd/ctocompass
-hop>
+hop>   (1-3, arrows)
 ```
 
 | key | |
@@ -121,7 +121,23 @@ hop>
 | digits, then `Enter` | select by number |
 | `Esc`, `q`, `^C` | cancel |
 
-The menu erases itself on the way out, so your scrollback stays clean.
+The menu erases itself on the way out, so your scrollback stays clean. Unlike
+browsing, typing a letter here does nothing — hence the hint, which names the
+numbers that are live.
+
+Nesting is not ambiguity. A match that sits inside another match *under the
+same name* is that name seen from further in, not a second destination, so the
+outer one wins and there is no prompt:
+
+```console
+$ hop conversation                       # not asked to choose between
+~/Code/conversation                      #   ~/Code/conversation and
+                                         #   ~/Code/conversation/app/api/conversation
+```
+
+Only under the same name, though: a differently-named directory that merely
+happens to live inside another match is a different place, and is still
+offered. `hop --list` and browsing show everything either way.
 
 Or settle it in one shot with a path fragment:
 
@@ -195,10 +211,11 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-127 assertions. Every behavioural assertion runs under **both bash and zsh**,
+140 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
-depth limits, pruning, multiple roots, symlinked roots, `~` expansion, names
-with spaces, exit codes, and the installer's idempotence.
+nested same-name matches, depth limits, pruning, multiple roots, symlinked
+roots, `~` expansion, names with spaces, exit codes, and the installer's
+idempotence.
 
 The pickers only engage on a real terminal, so they are tested through one:
 `test/pty-pick.zsh` spawns `hop` under a pty, sends actual keystrokes, and
