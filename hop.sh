@@ -2,7 +2,7 @@
 #
 #   hop aixcto        cd to the directory named aixcto, wherever it lives
 #   hop CTO/compass   disambiguate with a path fragment
-#   hop              browse everything, type to filter
+#   hop --browse      browse everything, type to filter
 #   hop --list foo    show every match instead of jumping
 #
 # Source this file from your shell rc. It must be sourced, not executed:
@@ -19,7 +19,7 @@
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.2.2"
+HOP_VERSION="0.3.0"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -339,7 +339,7 @@ _hop_resolve_picker() {
   fi
 }
 
-# ── the browser (bare `hop`) ─────────────────────────────────────────────────
+# ── the browser (`hop --browse`) ─────────────────────────────────────────────────
 
 _hop_browse_draw() {
   local matches="$1" mcount="$2" sel="$3" top="$4" vis="$5" q="$6" prev="$7"
@@ -458,10 +458,15 @@ _hop_usage() {
   cat <<'USAGE'
 Usage: hop [options] [name]
 
-Jump to a directory by name, from anywhere. With no name, browse everything
-and type to narrow it down.
+Jump to a directory by name, from anywhere.
+
+  hop aixcto        cd to the directory named aixcto, wherever it lives
+  hop CTO/compass   disambiguate with a path fragment
+  hop --browse      browse everything, type to narrow it down
+  hop --list foo    show every match instead of jumping
 
 Options:
+  -i, --browse      browse every directory, filtering as you type
   -l, --list        list matching directories instead of jumping
   -d, --depth N     how deep to descend (default: 4)
       --roots       print the directories hop searches
@@ -473,15 +478,19 @@ key you type filters; disambiguating a name, digits select by number.
 
 A name containing "/" is matched against the tail of the path, which is the
 quickest way to settle an ambiguous name: hop CTO/compass
+
+hop, by Etienne de Bruin <etienne@everydev.com>
+https://github.com/etdebruin/hop — MIT licensed.
 USAGE
 }
 
 hop() {
-  local list=0 query="" matches count target
+  local list=0 browse=0 query="" matches count target
   local HOP_DEPTH="${HOP_DEPTH:-4}"
 
   while [ $# -gt 0 ]; do
     case "$1" in
+      -i|--browse) browse=1 ;;
       -l|--list) list=1 ;;
       -d|--depth)
         shift
@@ -498,8 +507,16 @@ hop() {
     shift
   done
 
-  # No name: browse everything. With nothing to draw on (a pipe, a script, a
-  # dumb terminal) there is no browsing to do, so fall back to the first root.
+  # No name and nothing asked for: say what hop does. Guessing a destination
+  # from an empty command line is the one thing a jump tool shouldn't do.
+  if [ -z "$query" ] && [ "$list" -eq 0 ] && [ "$browse" -eq 0 ]; then
+    _hop_usage
+    return 0
+  fi
+
+  # No name: browse or list everything. With nothing to draw on (a pipe, a
+  # script, a dumb terminal) there is no browsing to do, so fall back to the
+  # first root.
   if [ -z "$query" ]; then
     if [ "$list" -eq 1 ]; then
       _hop_all | _hop_rank '' keep

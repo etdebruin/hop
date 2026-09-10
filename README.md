@@ -78,16 +78,17 @@ $ hop aixcto                # exact name, anywhere under your roots
 $ hop dotf                  # prefix match
 $ hop andbox                # substring match
 $ hop AIXCTO                # case-insensitive
-$ hop                       # no argument: browse everything, type to filter
+$ hop --browse              # browse everything, type to filter
+$ hop                       # no argument: usage, and how to get everywhere else
 ```
 
 ### Browsing
 
-Run `hop` with no argument and you get every directory under your roots,
+`hop --browse` (or `hop -i`) gives you every directory under your roots,
 narrowing as you type:
 
 ```console
-$ hop
+$ hop --browse
    ~/Code/aixcto
 ❯  ~/Code/dotfiles
    ~/Code/su/backend
@@ -156,6 +157,7 @@ scriptable.
 
 | | |
 |---|---|
+| `-i`, `--browse` | browse every directory, filtering as you type |
 | `-l`, `--list` | print every match instead of jumping |
 | `-d`, `--depth N` | how deep to descend, just for this call |
 | `--roots` | print the directories `hop` searches |
@@ -234,4 +236,4 @@ All of these skip automatically if `zsh/zpty` isn't available.
 
 ## License
 
-MIT
+MIT. Made by Etienne de Bruin — <etienne@everydev.com>.

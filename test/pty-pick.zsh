@@ -3,7 +3,7 @@
 #
 #   pty-pick.zsh <hop.sh> <roots> <query> <key>...
 #
-# An empty <query> runs bare `hop`, i.e. the browser.
+# An empty <query> runs `hop --browse`, i.e. the browser.
 # Keys: up down enter esc ctrl-c ctrl-u bs q j k <digit>, or type:<text>
 #
 # Two things this has to get right: output is drained continuously (when the
@@ -26,7 +26,7 @@ CMD+='print -l ABOVE1 ABOVE2 ABOVE3; '
 if [[ -n $QUERY ]]; then
   CMD+="source ${(q)HOPSH}; hop ${(q)QUERY}; "
 else
-  CMD+="source ${(q)HOPSH}; hop; "
+  CMD+="source ${(q)HOPSH}; hop --browse; "
 fi
 CMD+='printf "RESULT:%s\n" "$PWD"; sleep 3'
 zpty -b p zsh -f -c ${(q)CMD} || exit 3

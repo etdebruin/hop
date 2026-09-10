@@ -92,9 +92,6 @@ for SH in $SHELLS; do
   eq "directory name containing a space" \
     "$TMP/Code/spaced/two words" "$(run 'hop "two words" >/dev/null 2>&1; printf %s "$PWD"')"
 
-  eq "no args cds to the first root" \
-    "$TMP/Code" "$(run 'hop >/dev/null 2>&1; printf %s "$PWD"')"
-
   # -- misses ----------------------------------------------------------------
   out="$(run 'hop zzznope; printf "|%s" "$PWD"')"
   has "no match reports on stderr" "no directory matching" "$out"
@@ -184,6 +181,18 @@ $TMP/Code/ctoapps/ctocompass" "$out"
   # -- flags -----------------------------------------------------------------
   has "--help prints usage" "Usage: hop" "$(run 'hop --help')"
   eq  "--help exits 0" "0" "$(run 'hop --help >/dev/null; printf %s "$?"')"
+  has "usage credits the author" "etienne@everydev.com" "$(run 'hop --help')"
+  has "usage points at the browser" "--browse" "$(run 'hop --help')"
+  # Bare `hop` is a question, not a destination: it says what hop can do and
+  # leaves you where you are.
+  has "bare hop prints usage" "Usage: hop" "$(run 'hop')"
+  eq  "bare hop exits 0" "0" "$(run 'hop >/dev/null 2>&1; printf %s "$?"')"
+  eq  "bare hop does not cd" \
+    "$TMP/elsewhere" "$(run 'hop >/dev/null 2>&1; printf %s "$PWD"')"
+  eq  "--browse without a tty falls back to the first root" \
+    "$TMP/Code" "$(run 'hop --browse >/dev/null 2>&1; printf %s "$PWD"')"
+  eq  "-i is --browse" \
+    "$TMP/Code" "$(run 'hop -i >/dev/null 2>&1; printf %s "$PWD"')"
   has "--version prints a version" "hop 0." "$(run 'hop --version')"
   eq  "unknown option exits 2" "2" "$(run 'hop --bogus >/dev/null 2>&1; printf %s "$?"')"
   eq  "-- ends option parsing" \
@@ -251,7 +260,7 @@ if command -v zsh >/dev/null 2>&1 && zsh -c 'zmodload zsh/zpty' 2>/dev/null; the
   eq "arrow: escape cancels without moving" "/" "$(pick esc)"
   eq "arrow: q cancels without moving" "/" "$(pick q)"
 
-  # Bare `hop` browses everything, narrowing as you type.
+  # `hop --browse` browses everything, narrowing as you type.
   browse() { zsh "$ROOT/test/pty-pick.zsh" "$HOP_SH" "$PTY/Code" "" "$@" 2>/dev/null | sed 's|^RESULT:||'; }
 
   eq "browse: enter takes the first row" "$PTY/Code/CTO" "$(browse enter)"
