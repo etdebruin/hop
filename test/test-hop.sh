@@ -30,6 +30,10 @@ mkdir -p \
   "$TMP/Code/su/backend" \
   "$TMP/Code/conversation/app/routes/conversation" \
   "$TMP/Code/zeta/zetaside" \
+  "$TMP/Code/everydev" \
+  "$TMP/Code/dotfiles/chrome/themes/everydev" \
+  "$TMP/Code/nest/widget" \
+  "$TMP/Other/deep/root/widget" \
   "$TMP/Code/deep/a/b/c/needle" \
   "$TMP/Code/proj/node_modules/evil" \
   "$TMP/Code/proj/.git/hooks" \
@@ -165,10 +169,39 @@ $TMP/Code/ctoapps/ctocompass" "$out"
     "$(run 'hop --list conversation | grep -c conversation')"
   eq "browsing still sees every nested match" "1" \
     "$(run 'hop --list | grep -c "conversation/app/routes/conversation"')"
-  # Only the same name collapses: a differently-named directory that happens to
-  # sit inside another match is a different place, and still worth offering.
-  eq "a differently-named nested match is still offered" \
-    "$TMP/Code/zeta/zetaside" "$(run 'hop zet >/dev/null 2>&1; printf %s "$PWD"' '2')"
+
+  # -- depth ------------------------------------------------------------------
+  # Two directories of the same name at different depths are not really a
+  # question either: the one nearer the root is the project, the deep one is a
+  # copy, a theme, a fixture. Shallowest wins; -a asks anyway.
+  eq "the shallowest match wins without asking" \
+    "$TMP/Code/everydev" "$(run 'hop everydev >/dev/null 2>&1; printf %s "$PWD"')"
+  eq "collapsing by depth still prints the destination" \
+    "0" "$(run 'hop everydev >/dev/null 2>&1; printf %s "$?"')"
+  eq "-a offers the deeper matches too" \
+    "$TMP/Code/dotfiles/chrome/themes/everydev" \
+    "$(run 'hop -a everydev >/dev/null 2>&1; printf %s "$PWD"' '2')"
+  eq "--all is the long spelling" \
+    "$TMP/Code/dotfiles/chrome/themes/everydev" \
+    "$(run 'hop --all everydev >/dev/null 2>&1; printf %s "$PWD"' '2')"
+  eq "-a still collapses a same-name nest" \
+    "$TMP/Code/conversation" "$(run 'hop -a conversation >/dev/null 2>&1; printf %s "$PWD"')"
+  eq "--list shows the deeper matches regardless" "2" \
+    "$(run 'hop --list everydev | grep -c everydev')"
+  # Matches at the same depth are a real question, and still get asked.
+  eq "equally shallow matches still ask" \
+    "$TMP/Code/ctoapps/ctocompass" "$(run 'hop ctocompass >/dev/null 2>&1; printf %s "$PWD"' '2')"
+  # Depth is counted from each root, not from /: a match one level under a
+  # deeply-nested root is shallower than one two levels under a short root.
+  eq "depth is measured from the root it was found under" \
+    "$TMP/Other/deep/root/widget" \
+    "$(run 'HOP_ROOTS="@TMP@/Code:@TMP@/Other/deep/root"; hop widget >/dev/null 2>&1; printf %s "$PWD"')"
+  # Different names at different depths collapse the same way -- the rule is
+  # about depth, not about the name.
+  eq "a differently-named deeper match is dropped too" \
+    "$TMP/Code/zeta" "$(run 'hop zet >/dev/null 2>&1; printf %s "$PWD"')"
+  eq "-a offers the differently-named deeper match" \
+    "$TMP/Code/zeta/zetaside" "$(run 'hop -a zet >/dev/null 2>&1; printf %s "$PWD"' '2')"
 
   # -- output ----------------------------------------------------------------
   has "prints the destination, ~-abbreviated" "~/Code/aixcto" \
@@ -183,6 +216,7 @@ $TMP/Code/ctoapps/ctocompass" "$out"
   eq  "--help exits 0" "0" "$(run 'hop --help >/dev/null; printf %s "$?"')"
   has "usage credits the author" "etienne@everydev.com" "$(run 'hop --help')"
   has "usage points at the browser" "--browse" "$(run 'hop --help')"
+  has "usage documents --all" "--all" "$(run 'hop --help')"
   # Bare `hop` is a question, not a destination: it says what hop can do and
   # leaves you where you are.
   has "bare hop prints usage" "Usage: hop" "$(run 'hop')"

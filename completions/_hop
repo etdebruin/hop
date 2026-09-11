@@ -5,6 +5,7 @@ local -a names
 local state
 
 _arguments -C -s \
+  '(-a --all)'{-a,--all}'[offer every match, not just the ones nearest a root]' \
   '(-i --browse)'{-i,--browse}'[browse every directory, filtering as you type]' \
   '(-l --list)'{-l,--list}'[list matching directories instead of jumping]' \
   '(-d --depth)'{-d,--depth}'[how deep to descend]:depth:' \

@@ -2,6 +2,7 @@
 #
 #   hop aixcto        cd to the directory named aixcto, wherever it lives
 #   hop CTO/compass   disambiguate with a path fragment
+#   hop -a name       offer every match, not just the ones nearest a root
 #   hop --browse      browse everything, type to filter
 #   hop --list foo    show every match instead of jumping
 #
@@ -148,6 +149,34 @@ _hop_prune_nested() {
         if (!nested) print path[i]
       }
     }
+  '
+}
+
+# Read matches on stdin, print back only the ones nearest a root.
+#
+# `hop everydev` finding ~/Code/everydev and a stray copy four levels down
+# inside a dotfiles tree is not really a question: the shallow one is the
+# project, the deep one is a fixture, a theme, a vendored copy. Depth is the
+# strongest signal a filesystem gives about which of two same-quality matches
+# you meant, so the shallowest tier wins and the rest are dropped. `-a` keeps
+# them, for the times the deep one is the point.
+#
+# Depth is counted from the root the match was found under, not from /, so a
+# short root and a deeply-nested one compare fairly.
+_hop_shallowest() {
+  awk -v roots="$(_hop_roots | tr '\n' ':')" '
+    BEGIN { nroots = split(roots, root, ":") }
+    function depth(p,   i, d, best) {
+      best = split(p, seg, "/")
+      for (i = 1; i <= nroots; i++) {
+        if (root[i] == "" || index(p, root[i] "/") != 1) continue
+        d = split(substr(p, length(root[i]) + 2), seg, "/")
+        if (d < best) best = d
+      }
+      return best
+    }
+    { path[NR] = $0; deep[NR] = depth($0); if (NR == 1 || deep[NR] < min) min = deep[NR] }
+    END { for (i = 1; i <= NR; i++) if (deep[i] == min) print path[i] }
   '
 }
 
@@ -466,6 +495,7 @@ Jump to a directory by name, from anywhere.
   hop --list foo    show every match instead of jumping
 
 Options:
+  -a, --all         offer every match, not just the ones nearest a root
   -i, --browse      browse every directory, filtering as you type
   -l, --list        list matching directories instead of jumping
   -d, --depth N     how deep to descend (default: 4)
@@ -476,6 +506,9 @@ Options:
 In the picker: arrows (or k/j) move, Enter jumps, Esc cancels. Browsing, any
 key you type filters; disambiguating a name, digits select by number.
 
+When the same name turns up at two depths, the one nearest a search root wins
+without asking. Pass -a to be offered all of them.
+
 A name containing "/" is matched against the tail of the path, which is the
 quickest way to settle an ambiguous name: hop CTO/compass
 
@@ -485,11 +518,12 @@ USAGE
 }
 
 hop() {
-  local list=0 browse=0 query="" matches count target
+  local list=0 browse=0 all=0 query="" matches count target
   local HOP_DEPTH="${HOP_DEPTH:-4}"
 
   while [ $# -gt 0 ]; do
     case "$1" in
+      -a|--all) all=1 ;;
       -i|--browse) browse=1 ;;
       -l|--list) list=1 ;;
       -d|--depth)
@@ -546,6 +580,7 @@ hop() {
   fi
 
   matches="$(printf '%s\n' "$matches" | _hop_prune_nested)"
+  [ "$all" -eq 1 ] || matches="$(printf '%s\n' "$matches" | _hop_shallowest)"
   count="$(_hop_count "$matches")"
   if [ "$count" -eq 1 ]; then
     target="$matches"

@@ -78,6 +78,7 @@ $ hop aixcto                # exact name, anywhere under your roots
 $ hop dotf                  # prefix match
 $ hop andbox                # substring match
 $ hop AIXCTO                # case-insensitive
+$ hop -a everydev           # offer every match, not just the nearest ones
 $ hop --browse              # browse everything, type to filter
 $ hop                       # no argument: usage, and how to get everywhere else
 ```
@@ -136,9 +137,30 @@ $ hop conversation                       # not asked to choose between
                                          #   ~/Code/conversation/app/api/conversation
 ```
 
-Only under the same name, though: a differently-named directory that merely
-happens to live inside another match is a different place, and is still
-offered. `hop --list` and browsing show everything either way.
+Neither is depth. When the same-quality matches sit at different depths, the
+one nearest a search root wins and the deeper ones are dropped — the shallow
+one is the project, the deep one is a copy, a theme, a fixture:
+
+```console
+$ hop everydev                           # not asked to choose between
+~/Code/everydev                          #   ~/Code/everydev and
+                                         #   ~/Code/dotfiles/chrome/themes/everydev
+```
+
+Depth is counted from the root the match was found under, not from `/`, so a
+short root and a deeply-nested one compare fairly. Matches at the *same* depth
+are a real question, and still get asked.
+
+When the deep one is the point, `-a` offers all of them:
+
+```console
+$ hop -a everydev
+❯  1) ~/Code/everydev
+   2) ~/Code/dotfiles/chrome/themes/everydev
+hop>   (1-2, arrows)
+```
+
+`hop --list` and browsing show everything either way.
 
 Or settle it in one shot with a path fragment:
 
@@ -157,6 +179,7 @@ scriptable.
 
 | | |
 |---|---|
+| `-a`, `--all` | offer every match, not just the ones nearest a root |
 | `-i`, `--browse` | browse every directory, filtering as you type |
 | `-l`, `--list` | print every match instead of jumping |
 | `-d`, `--depth N` | how deep to descend, just for this call |
@@ -178,7 +201,8 @@ substring. `hop api` lands on `api`, not on a menu that also offers
 
 A query containing `/` is matched against the *tail of the path* instead of the
 name, at the same tiers. Within a tier, shallower paths come first, then
-alphabetical.
+alphabetical — and when jumping, only the shallowest depth in that tier is
+offered unless you pass `-a`.
 
 ## Configuration
 
