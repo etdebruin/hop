@@ -17,6 +17,9 @@ _arguments -C -s \
 case "$state" in
   names)
     names=(${(f)"$(_hop_candidates 2>/dev/null)"})
-    _describe -t directories 'directory' names
+    # compadd rather than _describe: the names carry no descriptions, so
+    # _describe's extra machinery is a few milliseconds spent on nothing --
+    # and this runs on a keystroke.
+    _wanted directories expl 'directory' compadd -a names
     ;;
 esac

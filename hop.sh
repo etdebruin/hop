@@ -16,13 +16,21 @@
 #   HOP_EXCLUDES   colon-separated dir names to never descend into
 #   HOP_PICKER     auto | arrow | numbered | fzf    (default: auto)
 #   HOP_QUIET      set to 1 to not print the destination
-#   HOP_CACHE_TTL  seconds to reuse the completion index (default: 30)
+#   HOP_CACHE_TTL  seconds before the completion index is refreshed in the
+#                  background (default: 30; 0 rescans in the foreground)
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
 HOP_VERSION="0.3.0"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
+
+# $EPOCHSECONDS is a builtin clock -- bash 5 has it outright, zsh after a
+# module load -- and the completion path reads the time often enough that not
+# forking date for it is worth two lines.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  zmodload zsh/datetime 2>/dev/null || :
+fi
 
 # ── searching ────────────────────────────────────────────────────────────────
 
@@ -594,32 +602,128 @@ hop() {
 }
 
 # ── completion ───────────────────────────────────────────────────────────────
+#
+# Completion fires on a keystroke, so it reads a list of names off disk rather
+# than scanning: a tab press must never wait on a filesystem walk. The index is
+# a convenience, not the truth -- jumping is still a live search, so a
+# directory created a second ago is reachable by name whether or not the
+# completion list has caught up yet.
+#
+# When the index goes stale we hand over the copy we have and rescan behind the
+# user's back. Making one unlucky tab press pay for the scan is exactly the
+# stall this exists to avoid.
 
-# Basenames of every candidate directory, for tab-completion. Cached, because
-# completion runs on every keystroke-ish; the search itself is always live so a
-# directory created a second ago is still reachable.
-_hop_candidates() {
-  local file ttl now mtime
-  file="${XDG_CACHE_HOME:-$HOME/.cache}/hop/index"
-  ttl="${HOP_CACHE_TTL:-30}"
-  if [ -f "$file" ]; then
-    # GNU and BSD stat spell mtime differently, and each *succeeds* on the
-    # other's flags while printing something that is not a number: GNU reads
-    # -f as "filesystem status" and dumps a block of text. So try both and
-    # insist on digits rather than trusting an exit status.
-    mtime="$(stat -c %Y "$file" 2>/dev/null)"
-    case "$mtime" in ''|*[!0-9]*) mtime="$(stat -f %m "$file" 2>/dev/null)" ;; esac
-    case "$mtime" in ''|*[!0-9]*) mtime='' ;; esac
-    now="$(date +%s)"
-    if [ -n "$mtime" ] && [ "$((now - mtime))" -lt "$ttl" ]; then
-      cat "$file"
-      return 0
-    fi
-  fi
-  mkdir -p "${file%/*}" 2>/dev/null || { _hop_all | awk -F/ '{ print $NF }' | LC_ALL=C sort -u; return 0; }
-  _hop_all | awk -F/ '{ print $NF }' | LC_ALL=C sort -u > "$file.tmp$$" && mv "$file.tmp$$" "$file"
-  cat "$file"
+# Every candidate's basename, computed live. The index's contents, and the
+# fallback when we have nowhere to write it (a read-only HOME, say).
+_hop_names() { _hop_all | awk -F/ '{ print $NF }' | LC_ALL=C sort -u; }
+
+# Record "the index was current at this moment". A sibling file rather than the
+# index's own mtime, because reading a line back is a shell builtin while
+# asking for an mtime means forking stat -- and GNU and BSD stat spell it
+# differently and each *succeeds* on the other's flags while printing something
+# that is not a number, so that fork was never reliable anyway.
+_hop_stamp() {
+  local now
+  now="${EPOCHSECONDS:-}"
+  [ -n "$now" ] || now="$(date +%s)"
+  printf '%s\n' "$now" > "$1/stamp" 2>/dev/null
+  return 0
 }
+
+# Set _hop_age to the seconds since the index was marked current. Returned in a
+# variable, not on stdout: a command substitution here would fork, and not
+# forking on the warm path is the whole point. A stamp that is missing or isn't
+# a number reads as forever ago -- err towards rescanning.
+_hop_age=0
+_hop_read_age() {
+  local stamp now
+  stamp=''
+  [ -r "$1/stamp" ] && IFS= read -r stamp < "$1/stamp" 2>/dev/null
+  case "$stamp" in
+    ''|*[!0-9]*) _hop_age=99999999; return 0 ;;
+  esac
+  now="${EPOCHSECONDS:-}"
+  [ -n "$now" ] || now="$(date +%s)"
+  _hop_age=$((now - stamp))
+}
+
+# Rebuild the index. Written to a temp file and moved into place, so a reader
+# gets either the whole old list or the whole new one. An empty scan is not
+# installed: if find just broke, the list we already have is worth more than
+# nothing.
+_hop_build_index() {
+  local dir tmp
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/hop"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  tmp="$dir/index.$$"
+  _hop_names > "$tmp" 2>/dev/null
+  if [ -s "$tmp" ] && mv "$tmp" "$dir/index" 2>/dev/null; then
+    _hop_stamp "$dir"
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null
+  return 1
+}
+
+# Kick off a rescan nobody waits for. The inner subshell exits the moment it
+# has forked, so the calling shell has no job to announce over the prompt the
+# user is typing at and nothing left to reap.
+_hop_refresh() {
+  ( _hop_build_index </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
+}
+
+# Basenames of every candidate directory, for tab-completion.
+_hop_candidates() {
+  local dir ttl
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/hop"
+  ttl="${HOP_CACHE_TTL:-30}"
+  case "$ttl" in ''|*[!0-9]*) ttl=30 ;; esac
+
+  # HOP_CACHE_TTL=0 means "don't hand me anything you haven't just checked".
+  if [ "$ttl" -eq 0 ]; then
+    _hop_build_index && { cat "$dir/index"; return 0; }
+    _hop_names
+    return 0
+  fi
+
+  if [ -s "$dir/index" ]; then
+    _hop_read_age "$dir"
+    if [ "$_hop_age" -ge "$ttl" ]; then
+      # Claim the refresh before forking it: the next tab press, in this shell
+      # or any other, then sees a fresh stamp and doesn't start a second scan.
+      _hop_stamp "$dir"
+      _hop_refresh
+    fi
+    cat "$dir/index"
+    return 0
+  fi
+
+  # Nothing on disk yet, so this one call pays for the scan.
+  _hop_build_index && { cat "$dir/index"; return 0; }
+  _hop_names
+}
+
+# A new shell warms the index in the background, so the first tab press of a
+# session is as quick as the hundredth. Interactive shells only: a script that
+# sources hop has no tab key to be fast for.
+_hop_warm() {
+  local dir ttl
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/hop"
+  ttl="${HOP_CACHE_TTL:-30}"
+  case "$ttl" in ''|*[!0-9]*) ttl=30 ;; esac
+  [ "$ttl" -eq 0 ] && return 0
+  if [ -s "$dir/index" ]; then
+    _hop_read_age "$dir"
+    [ "$_hop_age" -ge "$ttl" ] || return 0
+  fi
+  mkdir -p "$dir" 2>/dev/null || return 0
+  _hop_stamp "$dir"
+  _hop_refresh
+}
+
+case "$-" in
+  *i*) _hop_warm ;;
+esac
 
 # bash completion; zsh users get completions/_hop instead.
 if [ -n "${BASH_VERSION:-}" ]; then

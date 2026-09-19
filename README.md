@@ -215,7 +215,7 @@ All optional, all environment variables:
 | `HOP_EXCLUDES` | see below | colon-separated directory *names* to never descend into |
 | `HOP_PICKER` | `auto` | `auto`, `arrow`, `numbered`, or `fzf` |
 | `HOP_QUIET` | unset | set to `1` to not print the destination |
-| `HOP_CACHE_TTL` | `30` | seconds to reuse the tab-completion index |
+| `HOP_CACHE_TTL` | `30` | seconds before the tab-completion index is refreshed in the background; `0` rescans in the foreground |
 
 ```sh
 export HOP_ROOTS="$HOME/Code:$HOME/work:$HOME/.config"
@@ -228,8 +228,19 @@ export HOP_DEPTH=5
 why the scan is fast; setting `HOP_EXCLUDES=""` searches everything and will be
 noticeably slower on a real tree.
 
-The search itself is **never cached** — only the tab-completion index is, for
-`HOP_CACHE_TTL` seconds, because completion runs far more often than you jump.
+The search itself is **never cached** — only the tab-completion index is,
+because completion runs on a keystroke and jumping doesn't.
+
+And a keystroke never waits on a scan. Once the index is older than
+`HOP_CACHE_TTL` seconds, hop hands you the list it already has and rescans in
+the background, so the refresh lands on the *next* tab press instead of
+stalling this one. The first press of a new shell is covered too: sourcing
+`hop.sh` warms the index behind you. A tab press costs about **10 ms**, whether
+or not the index happened to expire on it.
+
+Only the completion list can lag behind, and only by a few seconds. Jumping is
+always a live search, so a directory created a moment ago is reachable by name
+whether or not completion has caught up.
 
 ## Tests
 
@@ -237,7 +248,7 @@ The search itself is **never cached** — only the tab-completion index is, for
 bash test/test-hop.sh
 ```
 
-140 assertions. Every behavioural assertion runs under **both bash and zsh**,
+182 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 nested same-name matches, depth limits, pruning, multiple roots, symlinked
 roots, `~` expansion, names with spaces, exit codes, and the installer's

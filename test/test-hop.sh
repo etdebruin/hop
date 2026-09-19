@@ -233,16 +233,75 @@ $TMP/Code/ctoapps/ctocompass" "$out"
     "$TMP/Code/aixcto" "$(run 'hop -- aixcto >/dev/null 2>&1; printf %s "$PWD"')"
 
   # -- completion index ------------------------------------------------------
-  out="$(run 'export XDG_CACHE_HOME="@TMP@/cache"; _hop_candidates')"
+  out="$(run 'export XDG_CACHE_HOME="@TMP@/cache"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates')"
   has "candidate index lists basenames" "aixcto" "$out"
   hasnt "candidate index excludes pruned dirs" "evil" "$out"
-  # GNU and BSD stat disagree on flags and each prints garbage rather than
-  # failing on the other's; the index must survive an unreadable timestamp.
-  eq "candidate index survives a stat that returns nonsense" "aixcto" \
-    "$(run 'export XDG_CACHE_HOME="@TMP@/cache3"; mkdir -p "@TMP@/stub"; printf "#!/bin/sh\nprintf \"nonsense %%s\\n\" \"\$*\"\n" > "@TMP@/stub/stat"; chmod +x "@TMP@/stub/stat"; PATH="@TMP@/stub:$PATH"; _hop_candidates >/dev/null 2>&1; _hop_candidates 2>&1 | grep -c aixcto >/dev/null && _hop_candidates 2>/dev/null | grep -x aixcto')"
 
   eq "candidate index is cached to disk" "ok" \
-    "$(run 'export XDG_CACHE_HOME="@TMP@/cache2"; _hop_candidates >/dev/null; [ -s "$XDG_CACHE_HOME/hop/index" ] && printf ok')"
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cache2"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates >/dev/null; [ -s "$XDG_CACHE_HOME/hop/index" ] && printf ok')"
+
+  # With no index at all there is nothing to serve, so this one call pays for
+  # the scan -- and must come back with the answer, not with an empty list.
+  eq "a missing index is built before answering" "coldish" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachecold"; rm -rf "$XDG_CACHE_HOME"; mkdir -p "@TMP@/Code/coldish"; _hop_candidates | grep -x coldish; rmdir "@TMP@/Code/coldish"')"
+
+  # The whole point. A tab press must never wait on a filesystem walk, so an
+  # expired index is handed over exactly as it stands and the rescan happens
+  # behind the user's back.
+  eq "an expired index is served as it stands, then refreshed behind you" \
+    "served-stale refreshed" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachebg"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates >/dev/null
+      mkdir -p "@TMP@/Code/latecomer"; printf "0\n" > "$XDG_CACHE_HOME/hop/stamp"
+      case "$(_hop_candidates)" in *latecomer*) printf "blocked " ;; *) printf "served-stale " ;; esac
+      n=0; while [ "$n" -lt 100 ]; do
+        case "$(cat "$XDG_CACHE_HOME/hop/index")" in *latecomer*) break ;; esac
+        sleep 0.05; n=$((n + 1))
+      done
+      case "$(cat "$XDG_CACHE_HOME/hop/index")" in *latecomer*) printf refreshed ;; *) printf stale-forever ;; esac
+      rmdir "@TMP@/Code/latecomer"')"
+
+  # Serving stale would be a false economy if every tab press in the stale
+  # window started its own scan, so the first one claims the refresh.
+  eq "a burst of tab presses starts one rescan, not one each" "2" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachestorm" HOP_FIND_LOG="@TMP@/findlog"; rm -rf "$XDG_CACHE_HOME"
+      mkdir -p "@TMP@/stub2"
+      printf "#!/bin/sh\nprintf x >> \"\$HOP_FIND_LOG\"\nexec %s \"\$@\"\n" "$(command -v find)" > "@TMP@/stub2/find"
+      chmod +x "@TMP@/stub2/find"; : > "$HOP_FIND_LOG"; PATH="@TMP@/stub2:$PATH"
+      _hop_candidates >/dev/null
+      mkdir -p "@TMP@/Code/stormy"; printf "0\n" > "$XDG_CACHE_HOME/hop/stamp"
+      _hop_candidates >/dev/null; _hop_candidates >/dev/null; _hop_candidates >/dev/null
+      n=0; while [ "$n" -lt 100 ]; do
+        case "$(cat "$XDG_CACHE_HOME/hop/index")" in *stormy*) break ;; esac
+        sleep 0.05; n=$((n + 1))
+      done
+      sleep 0.3; wc -c < "$HOP_FIND_LOG" | tr -d " "
+      rmdir "@TMP@/Code/stormy"')"
+
+  # A stamp we cannot read is not a fresh one -- err towards rescanning.
+  eq "an unreadable stamp counts as stale" "refreshed" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachegarble"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates >/dev/null
+      mkdir -p "@TMP@/Code/garbled"; printf "not-a-time\n" > "$XDG_CACHE_HOME/hop/stamp"
+      _hop_candidates >/dev/null
+      n=0; while [ "$n" -lt 100 ]; do
+        case "$(cat "$XDG_CACHE_HOME/hop/index")" in *garbled*) break ;; esac
+        sleep 0.05; n=$((n + 1))
+      done
+      case "$(cat "$XDG_CACHE_HOME/hop/index")" in *garbled*) printf refreshed ;; *) printf stale-forever ;; esac
+      rmdir "@TMP@/Code/garbled"')"
+
+  # The rescan is detached rather than backgrounded, so the shell has no job
+  # to announce over the prompt the user is typing at.
+  eq "the background rescan leaves no job behind" "0" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachequiet"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates >/dev/null
+      printf "0\n" > "$XDG_CACHE_HOME/hop/stamp"; _hop_candidates >/dev/null
+      jobs > "@TMP@/jobs.txt" 2>/dev/null; wc -l < "@TMP@/jobs.txt" | tr -d " "')"
+
+  # HOP_CACHE_TTL=0 is the "do not hand me anything you have not just checked"
+  # setting, and has to mean exactly that.
+  eq "HOP_CACHE_TTL=0 rescans in the foreground" "nowish" \
+    "$(run 'export XDG_CACHE_HOME="@TMP@/cachezero"; rm -rf "$XDG_CACHE_HOME"; _hop_candidates >/dev/null
+      mkdir -p "@TMP@/Code/nowish"; export HOP_CACHE_TTL=0
+      _hop_candidates | grep -x nowish; rmdir "@TMP@/Code/nowish"')"
 done
 
 
