@@ -18,10 +18,13 @@
 #   HOP_QUIET      set to 1 to not print the destination
 #   HOP_CACHE_TTL  seconds before the completion index is refreshed in the
 #                  background (default: 30; 0 rescans in the foreground)
+#   HOP_ON_MISS    command run when nothing matches, with the name as its
+#                  argument; if it prints a directory (last line of stdout),
+#                  hop goes there. E.g. clone the repo of that name.
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.3.0"
+HOP_VERSION="0.4.0"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -578,6 +581,17 @@ hop() {
 
   matches="$(_hop_search "$query")"
   if [ -z "$matches" ]; then
+    # Nothing here to jump to. HOP_ON_MISS may be able to make it exist --
+    # clone the repo, say -- and tell us where. Never for --list, which only
+    # reports. The hook's stderr passes through, so a clone's progress shows.
+    if [ -n "${HOP_ON_MISS:-}" ] && [ "$list" -eq 0 ]; then
+      target="$(eval "$HOP_ON_MISS"' "$query"' | tail -n 1)"
+      if [ -n "$target" ] && [ -d "$target" ]; then
+        cd -- "$target" || return 1
+        [ -n "${HOP_QUIET:-}" ] || _hop_tilde "$PWD" >&2
+        return 0
+      fi
+    fi
     printf 'hop: no directory matching %s\n' "$query" >&2
     return 1
   fi

@@ -216,6 +216,7 @@ All optional, all environment variables:
 | `HOP_PICKER` | `auto` | `auto`, `arrow`, `numbered`, or `fzf` |
 | `HOP_QUIET` | unset | set to `1` to not print the destination |
 | `HOP_CACHE_TTL` | `30` | seconds before the tab-completion index is refreshed in the background; `0` rescans in the foreground |
+| `HOP_ON_MISS` | unset | command run when nothing matches, with the name as its argument; if it prints a directory (last line of stdout), hop goes there |
 
 ```sh
 export HOP_ROOTS="$HOME/Code:$HOME/work:$HOME/.config"
@@ -241,6 +242,22 @@ or not the index happened to expire on it.
 Only the completion list can lag behind, and only by a few seconds. Jumping is
 always a live search, so a directory created a moment ago is reachable by name
 whether or not completion has caught up.
+
+### Fetching what isn't there yet
+
+`HOP_ON_MISS` turns a miss into a fetch. It runs only when nothing matches —
+never for `--list` — gets the name as its one argument, and if the last line
+it prints is a directory, hop jumps there. Anything it writes to stderr (a
+clone's progress) reaches you as usual. Clone-on-miss, with `gh`:
+
+```sh
+hop_clone() {
+  gh repo clone "$1" "$HOME/Code/${1##*/}" >&2 && echo "$HOME/Code/${1##*/}"
+}
+export HOP_ON_MISS=hop_clone
+```
+
+Now `hop someone/project` clones it the first time and just jumps after that.
 
 ## Tests
 
