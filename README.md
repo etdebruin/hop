@@ -265,7 +265,7 @@ Now `hop someone/project` clones it the first time and just jumps after that.
 bash test/test-hop.sh
 ```
 
-182 assertions. Every behavioural assertion runs under **both bash and zsh**,
+200 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 nested same-name matches, depth limits, pruning, multiple roots, symlinked
 roots, `~` expansion, names with spaces, exit codes, and the installer's
