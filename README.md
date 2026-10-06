@@ -182,6 +182,7 @@ scriptable.
 | `-a`, `--all` | offer every match, not just the ones nearest a root |
 | `-i`, `--browse` | browse every directory, filtering as you type |
 | `-l`, `--list` | print every match instead of jumping |
+| `-c`, `--clone` | skip the search and run `HOP_ON_MISS`, for when the name matches the wrong directory |
 | `-d`, `--depth N` | how deep to descend, just for this call |
 | `--roots` | print the directories `hop` searches |
 | `-h`, `--help` | help |
@@ -259,13 +260,18 @@ export HOP_ON_MISS=hop_clone
 
 Now `hop someone/project` clones it the first time and just jumps after that.
 
+When the name *does* match, but the wrong thing (say a `themes/everydev`
+folder inside another project shadows the `everydev` repo), `hop --clone
+everydev` (`-c`) skips the search and asks the hook outright. It never falls
+back to the match it bypassed: a failing hook is an error.
+
 ## Tests
 
 ```sh
 bash test/test-hop.sh
 ```
 
-200 assertions. Every behavioural assertion runs under **both bash and zsh**,
+214 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 nested same-name matches, depth limits, pruning, multiple roots, symlinked
 roots, `~` expansion, names with spaces, exit codes, and the installer's

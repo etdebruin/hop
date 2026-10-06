@@ -132,6 +132,26 @@ hop --list zzznope 2>/dev/null')"
     "$TMP/Code/two new-$SH" "$(run "$miss_hook
 hop \"two new-$SH\" >/dev/null 2>&1; printf %s \"\$PWD\"")"
 
+  # -- --clone: skip the search, go straight to the hook ---------------------
+  # A name can match the wrong thing -- a same-named folder buried in another
+  # project -- and then the hook never runs. --clone asks for it outright.
+  eq "--clone runs the hook even when a directory matches" \
+    "$TMP/Code/sub-$SH/aixcto" "$(run "fetch() { mkdir -p \"@TMP@/Code/sub-$SH/\$1\" && printf '%s\n' \"@TMP@/Code/sub-$SH/\$1\"; }
+HOP_ON_MISS=fetch
+hop --clone aixcto >/dev/null 2>&1; printf %s \"\$PWD\"")"
+  eq "-c is the short form" \
+    "$TMP/Code/sub2-$SH/aixcto" "$(run "fetch() { mkdir -p \"@TMP@/Code/sub2-$SH/\$1\" && printf '%s\n' \"@TMP@/Code/sub2-$SH/\$1\"; }
+HOP_ON_MISS=fetch
+hop -c aixcto >/dev/null 2>&1; printf %s \"\$PWD\"")"
+  out="$(run 'unset HOP_ON_MISS; hop --clone aixcto; printf "|%s|%s" "$?" "$PWD"')"
+  has "--clone without HOP_ON_MISS explains itself" "HOP_ON_MISS" "$out"
+  has "--clone without HOP_ON_MISS exits 2, cwd untouched" "|2|$TMP/elsewhere" "$out"
+  out="$(run 'HOP_ON_MISS=false
+hop --clone aixcto; printf "|%s|%s" "$?" "$PWD"')"
+  has "--clone with a failing hook exits 1, cwd untouched" "|1|$TMP/elsewhere" "$out"
+  has "--clone with a failing hook does not fall back to the match" "could not clone" "$out"
+  eq "--clone needs a name" "2" "$(run 'HOP_ON_MISS=: ; hop --clone >/dev/null 2>&1; printf %s "$?"')"
+
   # -- pruning and depth -----------------------------------------------------
   eq "node_modules is pruned" \
     "1" "$(run 'hop evil >/dev/null 2>&1; printf %s "$?"')"

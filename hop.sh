@@ -24,7 +24,7 @@
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.4.0"
+HOP_VERSION="0.5.0"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -509,6 +509,8 @@ Options:
   -a, --all         offer every match, not just the ones nearest a root
   -i, --browse      browse every directory, filtering as you type
   -l, --list        list matching directories instead of jumping
+  -c, --clone       skip the search and run HOP_ON_MISS (e.g. clone the repo),
+                    for when the name matches some other directory
   -d, --depth N     how deep to descend (default: 4)
       --roots       print the directories hop searches
   -h, --help        show this help
@@ -529,7 +531,7 @@ USAGE
 }
 
 hop() {
-  local list=0 browse=0 all=0 query="" matches count target
+  local list=0 browse=0 all=0 clone=0 query="" matches count target
   local HOP_DEPTH="${HOP_DEPTH:-4}"
 
   while [ $# -gt 0 ]; do
@@ -537,6 +539,7 @@ hop() {
       -a|--all) all=1 ;;
       -i|--browse) browse=1 ;;
       -l|--list) list=1 ;;
+      -c|--clone) clone=1 ;;
       -d|--depth)
         shift
         [ $# -gt 0 ] || { printf 'hop: --depth needs a number\n' >&2; return 2; }
@@ -551,6 +554,11 @@ hop() {
     esac
     shift
   done
+
+  if [ "$clone" -eq 1 ] && [ -z "$query" ]; then
+    printf 'hop: --clone needs a name\n' >&2
+    return 2
+  fi
 
   # No name and nothing asked for: say what hop does. Guessing a destination
   # from an empty command line is the one thing a jump tool shouldn't do.
@@ -573,6 +581,24 @@ hop() {
     else
       target="$(_hop_roots | head -1)"
       [ -n "$target" ] || { printf 'hop: no search roots exist\n' >&2; return 1; }
+    fi
+    cd -- "$target" || return 1
+    [ -n "${HOP_QUIET:-}" ] || _hop_tilde "$PWD" >&2
+    return 0
+  fi
+
+  # --clone: the name matches, but not the thing wanted -- a same-named folder
+  # buried in another project shadows the repo, so the hook would never run.
+  # Ask the hook outright, and never fall back to the match it was bypassing.
+  if [ "$clone" -eq 1 ]; then
+    if [ -z "${HOP_ON_MISS:-}" ]; then
+      printf 'hop: --clone runs HOP_ON_MISS, which is not set\n' >&2
+      return 2
+    fi
+    target="$(eval "$HOP_ON_MISS"' "$query"' | tail -n 1)"
+    if [ -z "$target" ] || [ ! -d "$target" ]; then
+      printf 'hop: could not clone %s\n' "$query" >&2
+      return 1
     fi
     cd -- "$target" || return 1
     [ -n "${HOP_QUIET:-}" ] || _hop_tilde "$PWD" >&2
