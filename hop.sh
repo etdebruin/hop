@@ -18,13 +18,14 @@
 #   HOP_QUIET      set to 1 to not print the destination
 #   HOP_CACHE_TTL  seconds before the completion index is refreshed in the
 #                  background (default: 30; 0 rescans in the foreground)
-#   HOP_ON_MISS    command run when nothing matches, with the name as its
-#                  argument; if it prints a directory (last line of stdout),
-#                  hop goes there. E.g. clone the repo of that name.
+#   HOP_ON_MISS    command hop -c runs to fetch a directory, with the name as
+#                  its argument; if it prints a directory (last line of
+#                  stdout), hop goes there. E.g. clone the repo of that name.
+#                  A plain miss never runs it: that's usually a typo.
 #
 # https://github.com/etdebruin/hop — MIT licensed.
 
-HOP_VERSION="0.5.0"
+HOP_VERSION="0.6.0"
 
 HOP_DEFAULT_EXCLUDES='.git:.hg:.svn:node_modules:.venv:venv:__pycache__:.tox:target:.next:.nuxt:.svelte-kit:dist:build:out:vendor:Pods:.dart_tool:.terraform:.gradle:.cache:DerivedData:.stack-work:.cargo:bower_components'
 
@@ -509,8 +510,8 @@ Options:
   -a, --all         offer every match, not just the ones nearest a root
   -i, --browse      browse every directory, filtering as you type
   -l, --list        list matching directories instead of jumping
-  -c, --clone       skip the search and run HOP_ON_MISS (e.g. clone the repo),
-                    for when the name matches some other directory
+  -c, --clone       fetch it: skip the search and run HOP_ON_MISS (e.g. clone
+                    the repo). A plain miss never fetches -- typos happen
   -d, --depth N     how deep to descend (default: 4)
       --roots       print the directories hop searches
   -h, --help        show this help
@@ -607,18 +608,12 @@ hop() {
 
   matches="$(_hop_search "$query")"
   if [ -z "$matches" ]; then
-    # Nothing here to jump to. HOP_ON_MISS may be able to make it exist --
-    # clone the repo, say -- and tell us where. Never for --list, which only
-    # reports. The hook's stderr passes through, so a clone's progress shows.
-    if [ -n "${HOP_ON_MISS:-}" ] && [ "$list" -eq 0 ]; then
-      target="$(eval "$HOP_ON_MISS"' "$query"' | tail -n 1)"
-      if [ -n "$target" ] && [ -d "$target" ]; then
-        cd -- "$target" || return 1
-        [ -n "${HOP_QUIET:-}" ] || _hop_tilde "$PWD" >&2
-        return 0
-      fi
-    fi
+    # Nothing here to jump to. A miss is usually a typo, so it never runs
+    # HOP_ON_MISS on its own -- fetching is opt-in, with --clone.
     printf 'hop: no directory matching %s\n' "$query" >&2
+    if [ -n "${HOP_ON_MISS:-}" ] && [ "$list" -eq 0 ]; then
+      printf '     hop -c %s to fetch it\n' "$query" >&2
+    fi
     return 1
   fi
 

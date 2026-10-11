@@ -182,7 +182,7 @@ scriptable.
 | `-a`, `--all` | offer every match, not just the ones nearest a root |
 | `-i`, `--browse` | browse every directory, filtering as you type |
 | `-l`, `--list` | print every match instead of jumping |
-| `-c`, `--clone` | skip the search and run `HOP_ON_MISS`, for when the name matches the wrong directory |
+| `-c`, `--clone` | fetch it: skip the search and run `HOP_ON_MISS` (a plain miss never does) |
 | `-d`, `--depth N` | how deep to descend, just for this call |
 | `--roots` | print the directories `hop` searches |
 | `-h`, `--help` | help |
@@ -217,7 +217,7 @@ All optional, all environment variables:
 | `HOP_PICKER` | `auto` | `auto`, `arrow`, `numbered`, or `fzf` |
 | `HOP_QUIET` | unset | set to `1` to not print the destination |
 | `HOP_CACHE_TTL` | `30` | seconds before the tab-completion index is refreshed in the background; `0` rescans in the foreground |
-| `HOP_ON_MISS` | unset | command run when nothing matches, with the name as its argument; if it prints a directory (last line of stdout), hop goes there |
+| `HOP_ON_MISS` | unset | command `hop -c` runs, with the name as its argument; if it prints a directory (last line of stdout), hop goes there |
 
 ```sh
 export HOP_ROOTS="$HOME/Code:$HOME/work:$HOME/.config"
@@ -246,10 +246,12 @@ whether or not completion has caught up.
 
 ### Fetching what isn't there yet
 
-`HOP_ON_MISS` turns a miss into a fetch. It runs only when nothing matches —
-never for `--list` — gets the name as its one argument, and if the last line
-it prints is a directory, hop jumps there. Anything it writes to stderr (a
-clone's progress) reaches you as usual. Clone-on-miss, with `gh`:
+`HOP_ON_MISS` is how `hop -c <name>` fetches a directory that isn't there yet.
+It gets the name as its one argument, and if the last line it prints is a
+directory, hop jumps there. Anything it writes to stderr (a clone's progress)
+reaches you as usual. A plain `hop <name>` that finds nothing never runs it,
+because a miss is usually a typo; it says `hop -c <name> to fetch it` instead.
+Clone on request, with `gh`:
 
 ```sh
 hop_clone() {
@@ -258,7 +260,7 @@ hop_clone() {
 export HOP_ON_MISS=hop_clone
 ```
 
-Now `hop someone/project` clones it the first time and just jumps after that.
+Now `hop -c someone/project` clones it the first time, and plain `hop project` jumps after that.
 
 When the name *does* match, but the wrong thing (say a `themes/everydev`
 folder inside another project shadows the `everydev` repo), `hop --clone
@@ -271,7 +273,7 @@ back to the match it bypassed: a failing hook is an error.
 bash test/test-hop.sh
 ```
 
-214 assertions. Every behavioural assertion runs under **both bash and zsh**,
+220 assertions. Every behavioural assertion runs under **both bash and zsh**,
 against a throwaway fixture tree — match tiering, ambiguity and the picker,
 nested same-name matches, depth limits, pruning, multiple roots, symlinked
 roots, `~` expansion, names with spaces, exit codes, and the installer's

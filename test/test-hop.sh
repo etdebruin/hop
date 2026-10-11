@@ -102,35 +102,41 @@ for SH in $SHELLS; do
   has "no match leaves cwd alone" "|$TMP/elsewhere" "$out"
   eq  "no match exits non-zero" "1" "$(run 'hop zzznope >/dev/null 2>&1; printf %s "$?"')"
 
-  # -- HOP_ON_MISS: a miss can fetch the directory (e.g. clone it) ----------
-  # The hook gets the query as $1 and prints the directory it produced. Names
-  # carry the shell, since the fixture tree is shared and a directory made in
-  # the bash pass would otherwise be a plain match for the zsh one.
+  # -- HOP_ON_MISS: fetching is opt-in, via --clone --------------------------
+  # A plain miss is usually a typo, so it never runs the hook -- a typo must
+  # not set off a clone. It says how to fetch instead. The hook gets the query
+  # as $1 and prints the directory it produced. Names carry the shell, since
+  # the fixture tree is shared and a directory made in the bash pass would
+  # otherwise be a plain match for the zsh one.
   miss_hook='fetch() { mkdir -p "@TMP@/Code/$1" && echo "made $1" >&2 && printf "%s\n" "@TMP@/Code/$1"; }
 HOP_ON_MISS=fetch'
-  eq "on-miss hook's directory is where hop lands" \
+  out="$(run 'HOP_ON_MISS="echo CALLED >&2; false"
+hop zzznope; printf "|%s|%s" "$?" "$PWD"')"
+  case "$out" in *CALLED*) bad "a plain miss never runs the hook" "no CALLED" "$out" ;; *) ok ;; esac
+  has "a miss still reports itself" "no directory matching" "$out"
+  has "a miss points at --clone when a hook is set" "hop -c zzznope" "$out"
+  has "a miss exits 1, cwd untouched" "|1|$TMP/elsewhere" "$out"
+  out="$(run 'unset HOP_ON_MISS; hop zzznope 2>&1')"
+  case "$out" in *"hop -c"*) bad "no --clone hint without a hook" "no hint" "$out" ;; *) ok ;; esac
+  eq "--clone on a miss: the hook's directory is where hop lands" \
     "$TMP/Code/fresh1-$SH" "$(run "$miss_hook
-hop fresh1-$SH >/dev/null 2>&1; printf %s \"\$PWD\"")"
-  eq "on-miss success exits 0" "0" "$(run "$miss_hook
-hop fresh2-$SH >/dev/null 2>&1; printf %s \"\$?\"")"
+hop -c fresh1-$SH >/dev/null 2>&1; printf %s \"\$PWD\"")"
+  eq "--clone success exits 0" "0" "$(run "$miss_hook
+hop -c fresh2-$SH >/dev/null 2>&1; printf %s \"\$?\"")"
   has "hook's own chatter still reaches the user" "made fresh3-$SH" "$(run "$miss_hook
-hop fresh3-$SH 2>&1 >/dev/null")"
+hop -c fresh3-$SH 2>&1 >/dev/null")"
   eq "hook is not consulted when something matches" \
     "$TMP/Code/aixcto|" "$(run 'HOP_ON_MISS="echo CALLED >&2; false"
 hop aixcto 2>/dev/null; printf "%s|" "$PWD"; hop aixcto 2>&1 | grep CALLED')"
-  out="$(run 'HOP_ON_MISS=false
-hop zzznope; printf "|%s|%s" "$?" "$PWD"')"
-  has "failing hook: still reports the miss" "no directory matching" "$out"
-  has "failing hook: exits 1, cwd untouched" "|1|$TMP/elsewhere" "$out"
   eq "hook printing a non-directory is ignored" "1|$TMP/elsewhere" \
     "$(run 'HOP_ON_MISS="echo /nonexistent/zz; :"
-hop zzznope >/dev/null 2>&1; printf "%s|%s" "$?" "$PWD"')"
+hop -c zzznope >/dev/null 2>&1; printf "%s|%s" "$?" "$PWD"')"
   eq "--list never runs the hook" "" \
     "$(run 'HOP_ON_MISS="echo CALLED"
 hop --list zzznope 2>/dev/null')"
   eq "query with spaces reaches the hook as one argument" \
     "$TMP/Code/two new-$SH" "$(run "$miss_hook
-hop \"two new-$SH\" >/dev/null 2>&1; printf %s \"\$PWD\"")"
+hop -c \"two new-$SH\" >/dev/null 2>&1; printf %s \"\$PWD\"")"
 
   # -- --clone: skip the search, go straight to the hook ---------------------
   # A name can match the wrong thing -- a same-named folder buried in another
